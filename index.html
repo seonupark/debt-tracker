@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>채무 기록장</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+
+    /* ── 로그인 ── */
+    #login-screen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 24px;
+    }
+    #login-screen h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; color: #f1f5f9; }
+    #login-screen p  { color: #94a3b8; margin-bottom: 32px; font-size: 14px; }
+    .login-card { background: #1e293b; border-radius: 16px; padding: 32px; width: 100%; max-width: 360px; border: 1px solid #334155; }
+    .login-card label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 8px; }
+    .login-card input { width: 100%; padding: 12px 16px; background: #0f172a; border: 1px solid #334155; border-radius: 10px; color: #f1f5f9; font-size: 18px; letter-spacing: 4px; outline: none; }
+    .login-card input:focus { border-color: #6366f1; }
+    .btn-login { width: 100%; margin-top: 20px; padding: 14px; background: #6366f1; color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background .2s; }
+    .btn-login:hover { background: #4f46e5; }
+    #login-error { margin-top: 12px; color: #f87171; font-size: 13px; text-align: center; }
+
+    /* ── 메인 앱 ── */
+    #app-screen { display: none; padding: 0 0 80px; }
+    .top-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .top-bar .title { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+    .top-bar .user-badge { font-size: 12px; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
+    .badge-creditor { background: #1e40af; color: #93c5fd; }
+    .badge-debtor   { background: #7f1d1d; color: #fca5a5; }
+    .btn-logout { font-size: 12px; color: #64748b; cursor: pointer; padding: 4px 8px; }
+
+    /* ── 섹션 ── */
+    .section { padding: 20px; border-bottom: 1px solid #1e293b; }
+    .section-title { font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 14px; }
+
+    /* ── 요약 카드 ── */
+    .summary-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .summary-card { background: #1e293b; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #334155; }
+    .summary-card .label { font-size: 11px; color: #64748b; margin-bottom: 6px; }
+    .summary-card .value { font-size: 18px; font-weight: 700; }
+    .value-total { color: #e2e8f0; }
+    .value-paid  { color: #34d399; }
+    .value-remain { color: #f87171; }
+
+    /* ── 대출 등록 카드 ── */
+    .loan-card { background: #1e293b; border-radius: 12px; padding: 16px; border: 1px solid #334155; }
+    .loan-card .loan-label { font-size: 12px; color: #64748b; }
+    .loan-card .loan-amount { font-size: 24px; font-weight: 700; color: #e2e8f0; margin: 4px 0; }
+    .loan-card .loan-meta { font-size: 12px; color: #94a3b8; }
+
+    /* ── 상환 계획 ── */
+    .plan-item { background: #1e293b; border-radius: 12px; padding: 16px; margin-bottom: 10px; border: 1px solid #334155; }
+    .plan-item .plan-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+    .plan-item .plan-date { font-size: 14px; font-weight: 600; color: #e2e8f0; }
+    .plan-item .plan-amount { font-size: 14px; font-weight: 600; }
+    .plan-item .plan-memo { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .plan-item .plan-footer { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .status-badge { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+    .status-pending   { background: #1e3a5f; color: #93c5fd; }
+    .status-hold      { background: #431407; color: #fdba74; }
+    .status-partial   { background: #1a2e1a; color: #86efac; }
+    .status-completed { background: #14532d; color: #4ade80; }
+    .hold-history { font-size: 11px; color: #94a3b8; margin-top: 8px; padding-top: 8px; border-top: 1px solid #334155; }
+    .payment-history { font-size: 11px; color: #86efac; }
+    .plan-actions { display: flex; gap: 6px; }
+    .btn-small { font-size: 11px; padding: 4px 10px; border-radius: 6px; border: none; cursor: pointer; font-weight: 600; }
+    .btn-hold    { background: #431407; color: #fdba74; }
+    .btn-payment { background: #14532d; color: #4ade80; }
+
+    /* ── 타임라인 ── */
+    .timeline-item { display: flex; gap: 12px; margin-bottom: 16px; }
+    .timeline-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+    .dot-loan    { background: #6366f1; }
+    .dot-plan    { background: #3b82f6; }
+    .dot-hold    { background: #f97316; }
+    .dot-payment { background: #22c55e; }
+    .timeline-line-wrap { display: flex; flex-direction: column; align-items: center; }
+    .timeline-line { width: 2px; flex: 1; background: #1e293b; margin: 2px 0; min-height: 20px; }
+    .timeline-content .t-type  { font-size: 11px; color: #64748b; }
+    .timeline-content .t-main  { font-size: 13px; color: #e2e8f0; font-weight: 500; margin: 2px 0; }
+    .timeline-content .t-sub   { font-size: 11px; color: #94a3b8; }
+
+    /* ── FAB ── */
+    .fab-wrap { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; }
+    .fab { width: 52px; height: 52px; border-radius: 50%; border: none; cursor: pointer; font-size: 22px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,.4); transition: transform .2s; }
+    .fab:hover { transform: scale(1.08); }
+    .fab-loan { background: #6366f1; }
+    .fab-plan { background: #3b82f6; }
+
+    /* ── 모달 ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; align-items: flex-end; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #1e293b; border-radius: 20px 20px 0 0; padding: 24px; width: 100%; max-width: 480px; border: 1px solid #334155; }
+    .modal h3 { font-size: 16px; font-weight: 700; margin-bottom: 20px; color: #f1f5f9; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid #334155;
+      border-radius: 8px; color: #f1f5f9; font-size: 14px; outline: none; font-family: inherit;
+    }
+    .form-group input:focus, .form-group textarea:focus { border-color: #6366f1; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+    .btn-cancel { flex: 1; padding: 12px; background: #334155; color: #e2e8f0; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; font-weight: 600; }
+    .btn-submit { flex: 2; padding: 12px; background: #6366f1; color: #fff; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; font-weight: 600; }
+
+    /* 탭 */
+    .tabs { display: flex; background: #1e293b; border-bottom: 1px solid #334155; }
+    .tab-btn { flex: 1; padding: 12px; font-size: 13px; font-weight: 600; color: #64748b; background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent; }
+    .tab-btn.active { color: #6366f1; border-bottom-color: #6366f1; }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* 로딩 */
+    .loading { text-align: center; padding: 40px; color: #64748b; font-size: 14px; }
+    .empty { text-align: center; padding: 40px; color: #475569; font-size: 13px; }
+  </style>
+</head>
+<body>
+
+<!-- ════════════ 로그인 화면 ════════════ -->
+<div id="login-screen">
+  <h1>📒 채무 기록장</h1>
+  <p>박선우 · 심원보</p>
+  <div class="login-card">
+    <label>비밀번호</label>
+    <input id="pw-input" type="password" maxlength="20" placeholder="비밀번호 입력" autocomplete="off">
+    <button class="btn-login" onclick="doLogin()">로그인</button>
+    <div id="login-error"></div>
+  </div>
+</div>
+
+<!-- ════════════ 메인 앱 ════════════ -->
+<div id="app-screen">
+  <div class="top-bar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="title">📒 채무 기록장</span>
+      <span id="user-badge" class="user-badge"></span>
+    </div>
+    <span class="btn-logout" onclick="doLogout()">로그아웃</span>
+  </div>
+
+  <!-- 탭 -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('summary')">요약</button>
+    <button class="tab-btn" onclick="switchTab('plans')">상환 계획</button>
+    <button class="tab-btn" onclick="switchTab('timeline')">타임라인</button>
+  </div>
+
+  <!-- 요약 탭 -->
+  <div id="tab-summary" class="tab-content active">
+    <div class="section">
+      <div class="section-title">전체 현황</div>
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="label">총 대출</div>
+          <div class="value value-total" id="s-total">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">상환 완료</div>
+          <div class="value value-paid" id="s-paid">-</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">잔여</div>
+          <div class="value value-remain" id="s-remain">-</div>
+        </div>
+      </div>
+    </div>
+    <div class="section">
+      <div class="section-title">대출 정보</div>
+      <div id="loan-area"><div class="empty">대출 정보 없음</div></div>
+    </div>
+    <div class="section">
+      <div class="section-title">D-Day</div>
+      <div id="dday-area"><div class="empty">예정된 상환일 없음</div></div>
+    </div>
+  </div>
+
+  <!-- 상환 계획 탭 -->
+  <div id="tab-plans" class="tab-content">
+    <div class="section">
+      <div class="section-title">상환 계획 목록</div>
+      <div id="plans-area"><div class="loading">불러오는 중...</div></div>
+    </div>
+  </div>
+
+  <!-- 타임라인 탭 -->
+  <div id="tab-timeline" class="tab-content">
+    <div class="section">
+      <div class="section-title">전체 히스토리</div>
+      <div id="timeline-area"><div class="loading">불러오는 중...</div></div>
+    </div>
+  </div>
+
+  <!-- FAB 버튼들 -->
+  <div class="fab-wrap">
+    <button class="fab fab-plan" onclick="openModal('plan')" title="상환 계획 추가">📅</button>
+    <button class="fab fab-loan" onclick="openModal('loan')" title="대출 정보 등록" id="fab-loan">💰</button>
+  </div>
+</div>
+
+<!-- ════════════ 모달들 ════════════ -->
+
+<!-- 대출 등록 모달 -->
+<div class="modal-overlay" id="modal-loan">
+  <div class="modal">
+    <h3>💰 대출 정보 등록</h3>
+    <div class="form-group">
+      <label>대출 금액 (원)</label>
+      <input id="loan-amount" type="number" placeholder="예: 5000000">
+    </div>
+    <div class="form-group">
+      <label>대출 날짜</label>
+      <input id="loan-date" type="date">
+    </div>
+    <div class="form-group">
+      <label>메모 (선택)</label>
+      <input id="loan-memo" type="text" placeholder="메모">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('loan')">취소</button>
+      <button class="btn-submit" onclick="submitLoan()">등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- 상환 계획 추가 모달 -->
+<div class="modal-overlay" id="modal-plan">
+  <div class="modal">
+    <h3>📅 상환 계획 추가</h3>
+    <div class="form-group">
+      <label>상환 예정일</label>
+      <input id="plan-date" type="date">
+    </div>
+    <div class="form-group">
+      <label>상환 금액 (원)</label>
+      <input id="plan-amount" type="number" placeholder="예: 1000000">
+    </div>
+    <div class="form-group">
+      <label>메모 (선택)</label>
+      <input id="plan-memo" type="text" placeholder="메모">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('plan')">취소</button>
+      <button class="btn-submit" onclick="submitPlan()">추가</button>
+    </div>
+  </div>
+</div>
+
+<!-- 홀드(연기) 모달 -->
+<div class="modal-overlay" id="modal-hold">
+  <div class="modal">
+    <h3>⏸️ 상환 연기</h3>
+    <input type="hidden" id="hold-plan-id">
+    <input type="hidden" id="hold-original-date">
+    <input type="hidden" id="hold-original-amount">
+    <div class="form-group">
+      <label>연기 사유</label>
+      <input id="hold-reason" type="text" placeholder="예: 자금 사정으로 인한 연기">
+    </div>
+    <div class="form-group">
+      <label>새 상환일</label>
+      <input id="hold-new-date" type="date">
+    </div>
+    <div class="form-group">
+      <label>변경 금액 (원, 선택)</label>
+      <input id="hold-new-amount" type="number" placeholder="변경 없으면 비워두세요">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('hold')">취소</button>
+      <button class="btn-submit" onclick="submitHold()">연기 등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- 납입 기록 모달 -->
+<div class="modal-overlay" id="modal-payment">
+  <div class="modal">
+    <h3>✅ 납입 기록</h3>
+    <input type="hidden" id="payment-plan-id">
+    <div class="form-group">
+      <label>납입일</label>
+      <input id="payment-date" type="date">
+    </div>
+    <div class="form-group">
+      <label>납입 금액 (원)</label>
+      <input id="payment-amount" type="number" placeholder="예: 500000">
+    </div>
+    <div class="form-group">
+      <label>메모 (선택)</label>
+      <input id="payment-memo" type="text" placeholder="메모">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('payment')">취소</button>
+      <button class="btn-submit" onclick="submitPayment()">기록</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = 'https://wonbiseo.co.kr';
+
+  let currentUser = null;
+  let currentPassword = null;
+  let appData = null;
+
+  // ── 유틸 ──
+  function fmt(n) {
+    if (n == null) return '-';
+    return Number(n).toLocaleString('ko-KR') + '원';
+  }
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+  function today() {
+    return new Date().toISOString().slice(0, 10);
+  }
+  function diffDays(dateStr) {
+    const now = new Date(); now.setHours(0,0,0,0);
+    const target = new Date(dateStr);
+    return Math.round((target - now) / 86400000);
+  }
+
+  // ── 로그인 ──
+  async function doLogin() {
+    const pw = document.getElementById('pw-input').value.trim();
+    if (!pw) return;
+    try {
+      const r = await fetch(API_BASE + '/debt/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        document.getElementById('login-error').textContent = data.error || '오류';
+        return;
+      }
+      currentUser = data;
+      currentPassword = pw;
+      sessionStorage.setItem('debt_pw', pw);
+      showApp();
+    } catch (e) {
+      document.getElementById('login-error').textContent = '서버 연결 실패';
+    }
+  }
+
+  function doLogout() {
+    sessionStorage.removeItem('debt_pw');
+    currentUser = null; currentPassword = null; appData = null;
+    document.getElementById('app-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('login-error').textContent = '';
+  }
+
+  document.getElementById('pw-input').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+  // ── 앱 표시 ──
+  function showApp() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app-screen').style.display = 'block';
+    const badge = document.getElementById('user-badge');
+    badge.textContent = currentUser.name + (currentUser.role === 'creditor' ? ' (채권자)' : ' (채무자)');
+    badge.className = 'user-badge ' + (currentUser.role === 'creditor' ? 'badge-creditor' : 'badge-debtor');
+    loadData();
+  }
+
+  // ── 데이터 로드 ──
+  async function loadData() {
+    try {
+      const r = await fetch(API_BASE + '/debt/data', {
+        headers: { 'x-debt-password': currentPassword }
+      });
+      appData = await r.json();
+      renderAll();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function renderAll() {
+    renderSummary();
+    renderPlans();
+    renderTimeline();
+  }
+
+  // ── 요약 렌더 ──
+  function renderSummary() {
+    if (!appData) return;
+    const total = appData.loan ? appData.loan.amount : 0;
+    const paid = (appData.plans || []).reduce((s, p) =>
+      s + (p.payments || []).reduce((a, x) => a + x.amount, 0), 0);
+    const remain = total - paid;
+
+    document.getElementById('s-total').textContent  = total ? fmt(total) : '-';
+    document.getElementById('s-paid').textContent   = fmt(paid);
+    document.getElementById('s-remain').textContent = total ? fmt(Math.max(0, remain)) : '-';
+
+    // 대출 정보
+    const loanArea = document.getElementById('loan-area');
+    if (appData.loan) {
+      loanArea.innerHTML = `
+        <div class="loan-card">
+          <div class="loan-label">대출 원금</div>
+          <div class="loan-amount">${fmt(appData.loan.amount)}</div>
+          <div class="loan-meta">📅 ${appData.loan.date} · 등록: ${appData.loan.by}${appData.loan.memo ? ' · ' + appData.loan.memo : ''}</div>
+        </div>`;
+      document.getElementById('fab-loan').style.display = 'none';
+    } else {
+      loanArea.innerHTML = '<div class="empty">대출 정보를 등록해주세요</div>';
+      document.getElementById('fab-loan').style.display = 'flex';
+    }
+
+    // D-Day
+    const ddayArea = document.getElementById('dday-area');
+    const pending = (appData.plans || []).filter(p => p.status !== 'completed').sort((a,b)=>a.date.localeCompare(b.date));
+    if (pending.length === 0) {
+      ddayArea.innerHTML = '<div class="empty">예정된 상환일 없음</div>';
+    } else {
+      const next = pending[0];
+      const diff = diffDays(next.date);
+      const label = diff === 0 ? 'D-Day' : diff > 0 ? `D-${diff}` : `D+${Math.abs(diff)}`;
+      const color = diff < 0 ? '#f87171' : diff === 0 ? '#fbbf24' : '#94a3b8';
+      ddayArea.innerHTML = `
+        <div class="loan-card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div class="loan-label">다음 상환일</div>
+              <div class="loan-amount" style="font-size:18px">${next.date}</div>
+              <div class="loan-meta">${fmt(next.amount)}${next.memo ? ' · ' + next.memo : ''}</div>
+            </div>
+            <div style="font-size:28px;font-weight:800;color:${color}">${label}</div>
+          </div>
+        </div>`;
+    }
+  }
+
+  // ── 상환 계획 렌더 ──
+  function renderPlans() {
+    const area = document.getElementById('plans-area');
+    if (!appData || !appData.plans || appData.plans.length === 0) {
+      area.innerHTML = '<div class="empty">상환 계획이 없습니다.<br>아래 📅 버튼으로 추가하세요.</div>';
+      return;
+    }
+    const sorted = [...appData.plans].sort((a,b) => a.date.localeCompare(b.date));
+    area.innerHTML = sorted.map(p => {
+      const statusLabel = { pending: '예정', hold: '연기됨', partial: '일부납입', completed: '완납' }[p.status] || p.status;
+      const paidSum = (p.payments || []).reduce((s, x) => s + x.amount, 0);
+      const holdHtml = p.holdHistory && p.holdHistory.length > 0
+        ? `<div class="hold-history">연기 이력: ${p.holdHistory.map(h => `${h.originalDate}→${h.newDate} (${h.reason})`).join(', ')}</div>` : '';
+      const payHtml = p.payments && p.payments.length > 0
+        ? `<div class="payment-history">납입 기록: ${p.payments.map(pay => `${pay.date} ${fmt(pay.amount)}`).join(', ')} / 합계 ${fmt(paidSum)}</div>` : '';
+      const amtColor = p.status === 'completed' ? '#4ade80' : '#e2e8f0';
+      return `
+        <div class="plan-item">
+          <div class="plan-header">
+            <div>
+              <div class="plan-date">${p.date}</div>
+              ${p.memo ? `<div class="plan-memo">${p.memo}</div>` : ''}
+            </div>
+            <div class="plan-amount" style="color:${amtColor}">${fmt(p.amount)}</div>
+          </div>
+          ${holdHtml}${payHtml}
+          <div class="plan-footer">
+            <span class="status-badge status-${p.status}">${statusLabel}</span>
+            ${p.status !== 'completed' ? `
+              <div class="plan-actions">
+                <button class="btn-small btn-hold" onclick="openHoldModal('${p.id}','${p.date}',${p.amount})">연기</button>
+                <button class="btn-small btn-payment" onclick="openPaymentModal('${p.id}')">납입</button>
+              </div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── 타임라인 렌더 ──
+  function renderTimeline() {
+    const area = document.getElementById('timeline-area');
+    if (!appData || !appData.timeline || appData.timeline.length === 0) {
+      area.innerHTML = '<div class="empty">기록이 없습니다.</div>';
+      return;
+    }
+    area.innerHTML = appData.timeline.map((e, i) => {
+      const isLast = i === appData.timeline.length - 1;
+      let icon, dotClass, mainText, subText;
+      if (e.type === 'loan') {
+        icon = '💰'; dotClass = 'dot-loan';
+        mainText = `대출 ${fmt(e.amount)}`;
+        subText = e.date + (e.memo ? ' · ' + e.memo : '') + ' · ' + e.by;
+      } else if (e.type === 'plan') {
+        icon = '📅'; dotClass = 'dot-plan';
+        mainText = `상환 계획 ${fmt(e.amount)}`;
+        subText = e.date + (e.memo ? ' · ' + e.memo : '') + ' · ' + e.by;
+      } else if (e.type === 'hold') {
+        icon = '⏸️'; dotClass = 'dot-hold';
+        mainText = `연기: ${e.oldDate} → ${e.newDate}`;
+        subText = (e.reason || '') + ' · ' + e.by;
+      } else if (e.type === 'payment') {
+        icon = '✅'; dotClass = 'dot-payment';
+        mainText = `납입 ${fmt(e.amount)}`;
+        subText = e.date + (e.memo ? ' · ' + e.memo : '') + ' · ' + e.by;
+      }
+      const ts = e.createdAt ? e.createdAt.replace('T',' ').slice(0,16) : '';
+      return `
+        <div class="timeline-item">
+          <div class="timeline-line-wrap">
+            <div class="timeline-dot ${dotClass}"></div>
+            ${!isLast ? '<div class="timeline-line"></div>' : ''}
+          </div>
+          <div class="timeline-content">
+            <div class="t-type">${icon} ${ts}</div>
+            <div class="t-main">${mainText}</div>
+            <div class="t-sub">${subText}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // ── 탭 전환 ──
+  function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    const tabs = ['summary', 'plans', 'timeline'];
+    const idx = tabs.indexOf(name);
+    document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+    document.getElementById('tab-' + name).classList.add('active');
+  }
+
+  // ── 모달 ──
+  function openModal(type) {
+    if (type === 'loan' && appData && appData.loan) {
+      alert('대출 정보가 이미 등록되어 있습니다.');
+      return;
+    }
+    if (type === 'loan') document.getElementById('loan-date').value = today();
+    if (type === 'plan') document.getElementById('plan-date').value = today();
+    document.getElementById('modal-' + type).classList.add('open');
+  }
+  function closeModal(type) {
+    document.getElementById('modal-' + type).classList.remove('open');
+  }
+  function openHoldModal(planId, date, amount) {
+    document.getElementById('hold-plan-id').value = planId;
+    document.getElementById('hold-original-date').value = date;
+    document.getElementById('hold-original-amount').value = amount;
+    document.getElementById('hold-reason').value = '';
+    document.getElementById('hold-new-date').value = '';
+    document.getElementById('hold-new-amount').value = '';
+    document.getElementById('modal-hold').classList.add('open');
+  }
+  function openPaymentModal(planId) {
+    document.getElementById('payment-plan-id').value = planId;
+    document.getElementById('payment-date').value = today();
+    document.getElementById('payment-amount').value = '';
+    document.getElementById('payment-memo').value = '';
+    document.getElementById('modal-payment').classList.add('open');
+  }
+
+  // ── API 호출 ──
+  async function api(path, body) {
+    const r = await fetch(API_BASE + path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-debt-password': currentPassword },
+      body: JSON.stringify(body)
+    });
+    return r.json();
+  }
+
+  async function submitLoan() {
+    const amount = parseInt(document.getElementById('loan-amount').value);
+    const date = document.getElementById('loan-date').value;
+    const memo = document.getElementById('loan-memo').value.trim();
+    if (!amount || !date) return alert('금액과 날짜를 입력하세요.');
+    const r = await api('/debt/loan', { amount, date, memo });
+    if (r.error) return alert(r.error);
+    closeModal('loan');
+    document.getElementById('loan-amount').value = '';
+    document.getElementById('loan-memo').value = '';
+    loadData();
+  }
+
+  async function submitPlan() {
+    const date = document.getElementById('plan-date').value;
+    const amount = parseInt(document.getElementById('plan-amount').value);
+    const memo = document.getElementById('plan-memo').value.trim();
+    if (!date || !amount) return alert('날짜와 금액을 입력하세요.');
+    const r = await api('/debt/plan', { id: uid(), date, amount, memo });
+    if (r.error) return alert(r.error);
+    closeModal('plan');
+    document.getElementById('plan-amount').value = '';
+    document.getElementById('plan-memo').value = '';
+    loadData();
+  }
+
+  async function submitHold() {
+    const planId = document.getElementById('hold-plan-id').value;
+    const originalDate = document.getElementById('hold-original-date').value;
+    const originalAmount = parseInt(document.getElementById('hold-original-amount').value);
+    const reason = document.getElementById('hold-reason').value.trim();
+    const newDate = document.getElementById('hold-new-date').value;
+    const newAmountRaw = document.getElementById('hold-new-amount').value;
+    const newAmount = newAmountRaw ? parseInt(newAmountRaw) : originalAmount;
+    if (!reason || !newDate) return alert('사유와 새 날짜를 입력하세요.');
+    const r = await api('/debt/hold', { id: uid(), planId, reason, originalDate, originalAmount, newDate, newAmount });
+    if (r.error) return alert(r.error);
+    closeModal('hold');
+    loadData();
+  }
+
+  async function submitPayment() {
+    const planId = document.getElementById('payment-plan-id').value;
+    const date = document.getElementById('payment-date').value;
+    const amount = parseInt(document.getElementById('payment-amount').value);
+    const memo = document.getElementById('payment-memo').value.trim();
+    if (!date || !amount) return alert('날짜와 금액을 입력하세요.');
+    const r = await api('/debt/payment', { id: uid(), planId, date, amount, memo });
+    if (r.error) return alert(r.error);
+    closeModal('payment');
+    loadData();
+  }
+
+  // 모달 오버레이 클릭 시 닫기
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+  });
+
+  // ── 자동 로그인 (세션 유지) ──
+  (async function autoLogin() {
+    const saved = sessionStorage.getItem('debt_pw');
+    if (!saved) return;
+    try {
+      const r = await fetch(API_BASE + '/debt/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: saved })
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      currentUser = data;
+      currentPassword = saved;
+      showApp();
+    } catch (e) {}
+  })();
+</script>
+</body>
+</html>
