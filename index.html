@@ -204,6 +204,29 @@
 
 <!-- ════════════ 모달들 ════════════ -->
 
+<!-- 대출 수정 모달 (채권자 전용) -->
+<div class="modal-overlay" id="modal-loan-edit">
+  <div class="modal">
+    <h3>✏️ 대출 정보 수정</h3>
+    <div class="form-group">
+      <label>대출 금액 (원)</label>
+      <input id="loan-edit-amount" type="number">
+    </div>
+    <div class="form-group">
+      <label>대출 날짜</label>
+      <input id="loan-edit-date" type="date">
+    </div>
+    <div class="form-group">
+      <label>메모 (선택)</label>
+      <input id="loan-edit-memo" type="text">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal('loan-edit')">취소</button>
+      <button class="btn-submit" onclick="submitLoanEdit()">저장</button>
+    </div>
+  </div>
+</div>
+
 <!-- 대출 등록 모달 -->
 <div class="modal-overlay" id="modal-loan">
   <div class="modal">
@@ -403,11 +426,15 @@
     // 대출 정보
     const loanArea = document.getElementById('loan-area');
     if (appData.loan) {
+      const editBtn = currentUser.role === 'creditor'
+        ? `<button class="btn-small btn-payment" style="margin-top:10px" onclick="openModal('loan-edit')">✏️ 수정</button>`
+        : '';
       loanArea.innerHTML = `
         <div class="loan-card">
           <div class="loan-label">대출 원금</div>
           <div class="loan-amount">${fmt(appData.loan.amount)}</div>
           <div class="loan-meta">📅 ${appData.loan.date} · 등록: ${appData.loan.by}${appData.loan.memo ? ' · ' + appData.loan.memo : ''}</div>
+          ${editBtn}
         </div>`;
       document.getElementById('fab-loan').style.display = 'none';
     } else {
@@ -536,6 +563,12 @@
       alert('대출 정보가 이미 등록되어 있습니다.');
       return;
     }
+    if (type === 'loan-edit') {
+      if (currentUser.role !== 'creditor') return;
+      document.getElementById('loan-edit-amount').value = appData.loan ? appData.loan.amount : '';
+      document.getElementById('loan-edit-date').value = appData.loan ? appData.loan.date : today();
+      document.getElementById('loan-edit-memo').value = appData.loan ? appData.loan.memo : '';
+    }
     if (type === 'loan') document.getElementById('loan-date').value = today();
     if (type === 'plan') document.getElementById('plan-date').value = today();
     document.getElementById('modal-' + type).classList.add('open');
@@ -568,6 +601,22 @@
       body: JSON.stringify(body)
     });
     return r.json();
+  }
+
+  async function submitLoanEdit() {
+    const amount = parseInt(document.getElementById('loan-edit-amount').value);
+    const date = document.getElementById('loan-edit-date').value;
+    const memo = document.getElementById('loan-edit-memo').value.trim();
+    if (!amount || !date) return alert('금액과 날짜를 입력하세요.');
+    const r = await fetch(API_BASE + '/debt/loan', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'x-debt-password': currentPassword },
+      body: JSON.stringify({ amount, date, memo })
+    });
+    const data = await r.json();
+    if (data.error) return alert(data.error);
+    closeModal('loan-edit');
+    loadData();
   }
 
   async function submitLoan() {
