@@ -519,7 +519,7 @@ body {
       채무 기록장
     </div>
     <div class="top-right">
-      <button class="sync-chip sync-none" id="syncChip" onclick="openTokenSetup(this.classList.contains('sync-err')?'expired':undefined)">☁ 미연결</button>
+      <button class="sync-chip sync-none" id="syncChip" onclick="manualSync()">☁ 미연결</button>
       <span class="user-chip" id="userChip"></span>
       <button class="logout-btn" onclick="logout()">로그아웃</button>
     </div>
@@ -706,25 +706,6 @@ body {
   </div>
 </div>
 
-<!-- ── 바텀시트: GitHub 토큰 설정 ── -->
-<div class="sheet-backdrop" id="sheet-tokenSetup" onclick="outsideClose(event,'tokenSetup')">
-  <div class="sheet">
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">☁ GitHub 동기화 설정</div>
-    <div class="sheet-body">
-      <div class="notice" id="tokenNotice">토큰은 이 기기에만 저장되며 GitHub에 올라가지 않습니다.</div>
-      <div class="form-g">
-        <label class="form-lbl">GitHub Personal Access Token</label>
-        <input type="password" class="form-inp mono" id="tokenInput" placeholder="github_pat_..." autocomplete="off">
-        <div class="form-hint">GitHub → Settings → Developer settings → Fine-grained tokens<br>권한: Contents (Read and write), 저장소: debt-tracker</div>
-      </div>
-    </div>
-    <div class="sheet-actions">
-      <button class="sheet-btn sheet-cancel" onclick="closeSheet('tokenSetup')">취소</button>
-      <button class="sheet-btn sheet-ok-green" onclick="saveToken()">저장</button>
-    </div>
-  </div>
-</div>
 
 <script>
 const USERS = {
@@ -732,17 +713,13 @@ const USERS = {
   '54343683': { name: '심원보', role: 'debtor' }
 };
 
-const GH_OWNER  = 'seonupark';
-const GH_REPO   = 'debt-tracker';
-const GH_FILE   = 'data.json';
-const GH_BRANCH = 'main';
+const SERVER_URL = 'https://wonbiseo.co.kr';
 
 let S = { loan: null, plans: [], timeline: [] };
 let currentUser = null;
-let _ghSha = null;
 
-// ── GitHub 동기화 ──
-function ghToken() { return localStorage.getItem('dbt_gh_token') || ''; }
+// ── 서버 동기화 ──
+function authPassword() { return currentUser ? currentUser.password : ''; }
 
 function setSyncUI(state, label) {
   const chip = document.getElementById('syncChip');
@@ -751,94 +728,36 @@ function setSyncUI(state, label) {
   chip.textContent = label;
 }
 
-async function githubLoad() {
-  const token = ghToken();
+async function serverLoad() {
   try {
-    const headers = { 'Cache-Control': 'no-cache' };
-    if (token) headers['Authorization'] = 'token ' + token;
-    const url = 'https://raw.githubusercontent.com/' + GH_OWNER + '/' + GH_REPO + '/' + GH_BRANCH + '/' + GH_FILE + '?t=' + Date.now();
-    const resp = await fetch(url, { headers });
-    if (resp.ok) return await resp.json();
+    const resp = await fetch(SERVER_URL + '/debt/state', {
+      headers: { 'x-debt-password': authPassword() }
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      return data.state || null;
+    }
   } catch(e) {}
   return null;
 }
 
-async function githubSave(data) {
-  const token = ghToken();
-  if (!token) return;
+async function serverSave(data) {
   setSyncUI('busy', '🔄 저장 중');
-  const apiUrl = 'https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + '/contents/' + GH_FILE;
-  const authHdr = { 'Authorization': 'token ' + token, 'Accept': 'application/vnd.github.v3+json' };
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      if (!_ghSha) {
-        const meta = await fetch(apiUrl, { headers: authHdr });
-        if (meta.ok) _ghSha = (await meta.json()).sha;
-        else if (meta.status === 401 || meta.status === 403) { setSyncUI('err', '🔑 토큰 오류'); return; }
-      }
-      const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
-      const body = { message: 'sync', content, branch: GH_BRANCH };
-      if (_ghSha) body.sha = _ghSha;
-      const put = await fetch(apiUrl, {
-        method: 'PUT',
-        headers: { ...authHdr, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      if (put.ok) {
-        _ghSha = (await put.json()).content?.sha || null;
-        setSyncUI('ok', '☁ 동기화됨');
-        return;
-      }
-      if (put.status === 401 || put.status === 403) { setSyncUI('err', '🔑 토큰 오류'); return; }
-      if (put.status === 409 || put.status === 422) { _ghSha = null; continue; }
-      setSyncUI('err', '⚠ 오류'); return;
-    } catch(e) { setSyncUI('err', '⚠ 오류'); return; }
+  try {
+    const resp = await fetch(SERVER_URL + '/debt/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-debt-password': authPassword() },
+      body: JSON.stringify({ state: data })
+    });
+    setSyncUI(resp.ok ? 'ok' : 'err', resp.ok ? '☁ 동기화됨' : '⚠ 오류');
+  } catch(e) {
+    setSyncUI('err', '⚠ 오류');
   }
-  setSyncUI('err', '⚠ 오류');
 }
 
-function mergeData(ghData, lsData) {
-  const ghHas = ghData && (ghData.loan || ghData.plans?.length);
-  const lsHas = lsData && (lsData.loan || lsData.plans?.length);
-  if (!ghHas && !lsHas) return { loan: null, plans: [], timeline: [] };
-  if (!ghHas) return lsData;
-  if (!lsHas) return ghData;
-  // 두 쪽 모두 데이터 있음: GitHub 기준, localStorage 전용 항목 병합
-  const ghIds = new Set(ghData.plans.map(p => p.id));
-  const lsOnly = lsData.plans.filter(p => !ghIds.has(p.id));
-  if (!lsOnly.length) return ghData;
-  const merged = { ...ghData, plans: [...ghData.plans, ...lsOnly] };
-  const ghTsSet = new Set(ghData.timeline.map(t => t.createdAt));
-  const lsOnlyTl = lsData.timeline.filter(t => !ghTsSet.has(t.createdAt));
-  merged.timeline = [...ghData.timeline, ...lsOnlyTl].sort((a,b) => new Date(b.createdAt)-new Date(a.createdAt));
-  return merged;
-}
-
-function openTokenSetup(reason) {
-  const existing = ghToken();
-  document.getElementById('tokenInput').value = existing ? '(설정됨 — 변경하려면 새 값 입력)' : '';
-  const notice = document.getElementById('tokenNotice');
-  if (reason === 'expired') {
-    notice.textContent = '🔑 토큰이 만료되었거나 유효하지 않습니다. 새 토큰을 입력해주세요.';
-  } else if (reason === 'missing') {
-    notice.textContent = '☁ GitHub 동기화를 사용하려면 토큰을 설정해주세요. 토큰은 이 기기에만 저장됩니다.';
-  } else {
-    notice.textContent = '토큰은 이 기기에만 저장되며 GitHub에 올라가지 않습니다.';
-  }
-  openSheet('tokenSetup');
-}
-
-function saveToken() {
-  const val = document.getElementById('tokenInput').value.trim();
-  if (val && !val.startsWith('(')) {
-    localStorage.setItem('dbt_gh_token', val);
-    _ghSha = null;
-  } else if (!val) {
-    localStorage.removeItem('dbt_gh_token');
-    _ghSha = null;
-  }
-  closeSheet('tokenSetup');
-  setSyncUI(ghToken() ? 'ok' : 'none', ghToken() ? '☁ 동기화됨' : '☁ 미연결');
+function manualSync() {
+  if (!currentUser) return;
+  loadAndRender();
 }
 
 // ── 로그인 ──
@@ -846,7 +765,7 @@ function tryLogin() {
   const pw = document.getElementById('pwInput').value;
   const user = USERS[pw];
   if (user) {
-    currentUser = user;
+    currentUser = { ...user, password: pw };
     const appWrap = document.getElementById('appWrap');
     appWrap.classList.add('visible');
     // 채무자는 읽기 전용 모드
@@ -874,7 +793,6 @@ function tryLogin() {
 function logout() {
   currentUser = null;
   S = { loan: null, plans: [], timeline: [] };
-  _ghSha = null;
   document.getElementById('pwInput').value = '';
   document.getElementById('loginError').textContent = '';
   const appWrap = document.getElementById('appWrap');
@@ -890,28 +808,31 @@ function logout() {
 // ── 데이터 ──
 function save() {
   localStorage.setItem('dbt_v2', JSON.stringify(S));
-  githubSave(S); // 비동기 GitHub 저장 (실패해도 localStorage 유지)
+  serverSave(S); // 비동기 서버 저장 (실패해도 localStorage 유지)
 }
 
 async function loadAndRender() {
-  const token = ghToken();
-  setSyncUI(token ? 'busy' : 'none', token ? '🔄 로딩 중' : '☁ 미연결');
+  setSyncUI('busy', '🔄 로딩 중');
 
-  const ghData = await githubLoad();
+  const serverData = await serverLoad();
   const lsRaw  = localStorage.getItem('dbt_v2');
   const lsData = lsRaw ? JSON.parse(lsRaw) : null;
 
-  S = mergeData(ghData, lsData);
-  localStorage.setItem('dbt_v2', JSON.stringify(S)); // 항상 로컬 백업 유지
+  if (serverData) {
+    S = serverData;
+    localStorage.setItem('dbt_v2', JSON.stringify(S));
+    setSyncUI('ok', '☁ 동기화됨');
+  } else if (lsData) {
+    S = lsData;
+    await serverSave(S); // 기존 로컬 데이터를 서버로 최초 업로드
+  } else {
+    S = { loan: null, plans: [], timeline: [] };
+    setSyncUI('ok', '☁ 연결됨');
+  }
 
-  if (token) setSyncUI(ghData ? 'ok' : 'none', ghData ? '☁ 동기화됨' : '☁ 미연결');
-
-  // 채권자에게만 대출 등록 시트를 자동으로 띄움
   if (!S.loan && currentUser.role === 'creditor') {
     document.getElementById('loanDate').value = today();
     openSheet('setupLoan');
-  } else if (!token && currentUser.role === 'creditor') {
-    openTokenSetup('missing');
   }
   render();
 }
