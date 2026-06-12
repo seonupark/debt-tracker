@@ -519,7 +519,7 @@ body {
       채무 기록장
     </div>
     <div class="top-right">
-      <button class="sync-chip sync-none" id="syncChip" onclick="openTokenSetup()">☁ 미연결</button>
+      <button class="sync-chip sync-none" id="syncChip" onclick="openTokenSetup(this.classList.contains('sync-err')?'expired':undefined)">☁ 미연결</button>
       <span class="user-chip" id="userChip"></span>
       <button class="logout-btn" onclick="logout()">로그아웃</button>
     </div>
@@ -712,7 +712,7 @@ body {
     <div class="sheet-handle"></div>
     <div class="sheet-title">☁ GitHub 동기화 설정</div>
     <div class="sheet-body">
-      <div class="notice">⚠️ 토큰을 저장하면 모든 기기에서 데이터가 공유됩니다.<br>토큰은 이 기기에만 저장되며 GitHub에 올라가지 않습니다.</div>
+      <div class="notice" id="tokenNotice">토큰은 이 기기에만 저장되며 GitHub에 올라가지 않습니다.</div>
       <div class="form-g">
         <label class="form-lbl">GitHub Personal Access Token</label>
         <input type="password" class="form-inp mono" id="tokenInput" placeholder="github_pat_..." autocomplete="off">
@@ -774,6 +774,7 @@ async function githubSave(data) {
       if (!_ghSha) {
         const meta = await fetch(apiUrl, { headers: authHdr });
         if (meta.ok) _ghSha = (await meta.json()).sha;
+        else if (meta.status === 401 || meta.status === 403) { setSyncUI('err', '🔑 토큰 오류'); return; }
       }
       const content = btoa(unescape(encodeURIComponent(JSON.stringify(data, null, 2))));
       const body = { message: 'sync', content, branch: GH_BRANCH };
@@ -788,6 +789,7 @@ async function githubSave(data) {
         setSyncUI('ok', '☁ 동기화됨');
         return;
       }
+      if (put.status === 401 || put.status === 403) { setSyncUI('err', '🔑 토큰 오류'); return; }
       if (put.status === 409 || put.status === 422) { _ghSha = null; continue; }
       setSyncUI('err', '⚠ 오류'); return;
     } catch(e) { setSyncUI('err', '⚠ 오류'); return; }
@@ -812,9 +814,17 @@ function mergeData(ghData, lsData) {
   return merged;
 }
 
-function openTokenSetup() {
+function openTokenSetup(reason) {
   const existing = ghToken();
   document.getElementById('tokenInput').value = existing ? '(설정됨 — 변경하려면 새 값 입력)' : '';
+  const notice = document.getElementById('tokenNotice');
+  if (reason === 'expired') {
+    notice.textContent = '🔑 토큰이 만료되었거나 유효하지 않습니다. 새 토큰을 입력해주세요.';
+  } else if (reason === 'missing') {
+    notice.textContent = '☁ GitHub 동기화를 사용하려면 토큰을 설정해주세요. 토큰은 이 기기에만 저장됩니다.';
+  } else {
+    notice.textContent = '토큰은 이 기기에만 저장되며 GitHub에 올라가지 않습니다.';
+  }
   openSheet('tokenSetup');
 }
 
@@ -900,6 +910,8 @@ async function loadAndRender() {
   if (!S.loan && currentUser.role === 'creditor') {
     document.getElementById('loanDate').value = today();
     openSheet('setupLoan');
+  } else if (!token && currentUser.role === 'creditor') {
+    openTokenSetup('missing');
   }
   render();
 }
