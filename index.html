@@ -368,6 +368,7 @@ body {
 .act-btn:active { opacity: 0.75; }
 .act-confirm { background: var(--blue-bg); color: var(--blue); }
 .act-hold    { background: var(--orange-bg); color: var(--orange); }
+.act-delete  { background: var(--red-bg); color: var(--red); }
 
 /* 보류 히스토리 */
 .hold-hist { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
@@ -961,6 +962,15 @@ function saveConfirm() {
   save(); closeSheet('confirm'); render();
 }
 
+// ── 계획 삭제 (채권자 전용) ──
+function deletePlan(planId) {
+  if (currentUser.role !== 'creditor') return;
+  if (!confirm('이 계획을 삭제하시겠습니까?\n삭제 후 복구가 불가능합니다.')) return;
+  S.plans = S.plans.filter(p => p.id !== planId);
+  S.timeline = S.timeline.filter(ev => ev.planId !== planId);
+  save(); render();
+}
+
 // ── 렌더 ──
 function render() { renderSummary(); renderPlans(); renderTimeline(); }
 
@@ -1038,11 +1048,13 @@ function renderPlans() {
       </div>` : '';
 
     // 수정/액션 버튼은 채권자(77896498)만 표시
-    const canAct = plan.status !== 'completed' && currentUser.role === 'creditor';
-    const actHtml = canAct ? `
+    const isCreditor = currentUser.role === 'creditor';
+    const canAct = plan.status !== 'completed' && isCreditor;
+    const actHtml = isCreditor ? `
       <div class="card-actions">
-        <button class="act-btn act-confirm" onclick="openConfirm('${plan.id}')">✅ 입금 확인</button>
-        <button class="act-btn act-hold"    onclick="openHold('${plan.id}')">⏸ 보류</button>
+        ${canAct ? `<button class="act-btn act-confirm" onclick="openConfirm('${plan.id}')">✅ 입금 확인</button>` : ''}
+        ${canAct ? `<button class="act-btn act-hold" onclick="openHold('${plan.id}')">⏸ 보류</button>` : ''}
+        <button class="act-btn act-delete" onclick="deletePlan('${plan.id}')">🗑 삭제</button>
       </div>` : '';
 
     return `
