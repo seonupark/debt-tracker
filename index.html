@@ -359,15 +359,16 @@ body {
 }
 .recorder-name { color: var(--text2); font-weight: 600; }
 
-.card-actions { display: flex; gap: 6px; margin-top: 12px; }
+.card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 .act-btn {
-  flex: 1; padding: 9px 0;
+  flex: 1; min-width: calc(50% - 3px); padding: 9px 0;
   border-radius: 8px; font-size: 13px; font-weight: 600;
   font-family: inherit; border: none; cursor: pointer; text-align: center;
 }
 .act-btn:active { opacity: 0.75; }
 .act-confirm { background: var(--blue-bg); color: var(--blue); }
 .act-hold    { background: var(--orange-bg); color: var(--orange); }
+.act-edit    { background: #f3f4f6; color: var(--text2); }
 .act-delete  { background: var(--red-bg); color: var(--red); }
 
 /* 보류 히스토리 */
@@ -646,6 +647,33 @@ body {
     <div class="sheet-actions">
       <button class="sheet-btn sheet-cancel" onclick="closeSheet('addPlan')">취소</button>
       <button class="sheet-btn sheet-ok-green" onclick="savePlan()">등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 바텀시트: 수정 (채권자 전용) ── -->
+<div class="sheet-backdrop" id="sheet-editPlan" onclick="outsideClose(event,'editPlan')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">✏️ 계획 수정</div>
+    <div class="sheet-body">
+      <input type="hidden" id="editPlanId">
+      <div class="form-g">
+        <label class="form-lbl">예정 입금일</label>
+        <input type="date" class="form-inp" id="editPlanDate">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">예정 금액 (원)</label>
+        <input type="number" class="form-inp mono" id="editPlanAmount" placeholder="예: 500000" inputmode="numeric">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">메모 (선택)</label>
+        <input type="text" class="form-inp" id="editPlanMemo" placeholder="예: 월급 후 입금">
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="sheet-btn sheet-cancel" onclick="closeSheet('editPlan')">취소</button>
+      <button class="sheet-btn sheet-ok-green" onclick="saveEdit()">저장</button>
     </div>
   </div>
 </div>
@@ -962,6 +990,31 @@ function saveConfirm() {
   save(); closeSheet('confirm'); render();
 }
 
+// ── 수정 (채권자 전용) ──
+function openEdit(planId) {
+  if (currentUser.role !== 'creditor') return;
+  const plan = S.plans.find(p => p.id === planId);
+  if (!plan) return;
+  document.getElementById('editPlanId').value     = planId;
+  document.getElementById('editPlanDate').value   = plan.date;
+  document.getElementById('editPlanAmount').value = plan.amount;
+  document.getElementById('editPlanMemo').value   = plan.memo || '';
+  openSheet('editPlan');
+}
+function saveEdit() {
+  if (currentUser.role !== 'creditor') return;
+  const planId = document.getElementById('editPlanId').value;
+  const date   = document.getElementById('editPlanDate').value;
+  const amount = parseInt(document.getElementById('editPlanAmount').value);
+  const memo   = document.getElementById('editPlanMemo').value.trim();
+  if (!date)              return alert('날짜를 입력해주세요.');
+  if (!amount || amount <= 0) return alert('금액을 입력해주세요.');
+  const plan = S.plans.find(p => p.id === planId);
+  if (!plan) return;
+  plan.date = date; plan.amount = amount; plan.memo = memo;
+  save(); closeSheet('editPlan'); render();
+}
+
 // ── 계획 삭제 (채권자 전용) ──
 function deletePlan(planId) {
   if (currentUser.role !== 'creditor') return;
@@ -1054,6 +1107,7 @@ function renderPlans() {
       <div class="card-actions">
         ${canAct ? `<button class="act-btn act-confirm" onclick="openConfirm('${plan.id}')">✅ 입금 확인</button>` : ''}
         ${canAct ? `<button class="act-btn act-hold" onclick="openHold('${plan.id}')">⏸ 보류</button>` : ''}
+        <button class="act-btn act-edit"   onclick="openEdit('${plan.id}')">✏️ 수정</button>
         <button class="act-btn act-delete" onclick="deletePlan('${plan.id}')">🗑 삭제</button>
       </div>` : '';
 
