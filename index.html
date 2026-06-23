@@ -288,6 +288,16 @@ body {
   transition: width 0.5s ease;
 }
 
+.summary-add-loan-btn {
+  display: block; width: 100%; margin-top: 14px;
+  background: rgba(255,255,255,0.18); color: white;
+  border: 1px solid rgba(255,255,255,0.4); border-radius: 10px;
+  padding: 10px; font-size: 13px; font-weight: 700;
+  font-family: inherit; cursor: pointer; text-align: center;
+  letter-spacing: 0.2px;
+}
+.summary-add-loan-btn:active { opacity: 0.75; }
+
 /* ── 콘텐츠 ── */
 .content { padding: 16px 16px 8px; }
 .tab-panel { display: none; }
@@ -553,6 +563,7 @@ body {
           <div class="promise-fill" id="promiseFill" style="width:0%"></div>
         </div>
       </div>
+      <button class="summary-add-loan-btn creditor-only" onclick="openSheet('addLoan')">+ 추가 대출 등록</button>
     </div>
 
     <!-- 탭 패널 -->
@@ -736,6 +747,68 @@ body {
 </div>
 
 
+<!-- ── 바텀시트: 추가 대출 등록 (채권자 전용) ── -->
+<div class="sheet-backdrop" id="sheet-addLoan" onclick="outsideClose(event,'addLoan')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">💸 추가 대출 등록</div>
+    <div class="sheet-body">
+      <div class="notice">⚠️ 원금과 이자를 구분하여 입력해주세요. 이자가 없으면 비워두세요.</div>
+      <div class="form-g">
+        <label class="form-lbl">대출일</label>
+        <input type="date" class="form-inp" id="addLoanDate">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">원금 (원)</label>
+        <input type="number" class="form-inp mono" id="addLoanPrincipal" placeholder="예: 1000000" inputmode="numeric">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">이자 (원, 선택)</label>
+        <input type="number" class="form-inp mono" id="addLoanInterest" placeholder="없으면 비워두세요" inputmode="numeric">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">메모 (선택)</label>
+        <input type="text" class="form-inp" id="addLoanMemo" placeholder="예: 긴급 생활비 추가">
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="sheet-btn sheet-cancel" onclick="closeSheet('addLoan')">취소</button>
+      <button class="sheet-btn sheet-ok-green" onclick="saveAddLoan()">등록</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── 바텀시트: 추가 대출 수정 (채권자 전용) ── -->
+<div class="sheet-backdrop" id="sheet-editLoan" onclick="outsideClose(event,'editLoan')">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">✏️ 추가 대출 수정</div>
+    <div class="sheet-body">
+      <input type="hidden" id="editLoanId">
+      <div class="form-g">
+        <label class="form-lbl">대출일</label>
+        <input type="date" class="form-inp" id="editLoanDate">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">원금 (원)</label>
+        <input type="number" class="form-inp mono" id="editLoanPrincipal" placeholder="예: 1000000" inputmode="numeric">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">이자 (원, 선택)</label>
+        <input type="number" class="form-inp mono" id="editLoanInterest" placeholder="없으면 비워두세요" inputmode="numeric">
+      </div>
+      <div class="form-g">
+        <label class="form-lbl">메모 (선택)</label>
+        <input type="text" class="form-inp" id="editLoanMemo" placeholder="예: 긴급 생활비 추가">
+      </div>
+    </div>
+    <div class="sheet-actions">
+      <button class="sheet-btn sheet-cancel" onclick="closeSheet('editLoan')">취소</button>
+      <button class="sheet-btn sheet-ok-green" onclick="saveEditLoan()">저장</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const USERS = {
   '77896498': { name: '박선우', role: 'creditor' },
@@ -744,7 +817,7 @@ const USERS = {
 
 const SERVER_URL = 'https://wonbiseo.co.kr';
 
-let S = { loan: null, plans: [], timeline: [] };
+let S = { loan: null, loans: [], plans: [], timeline: [] };
 let currentUser = null;
 
 // ── 서버 동기화 ──
@@ -821,7 +894,7 @@ function tryLogin() {
 
 function logout() {
   currentUser = null;
-  S = { loan: null, plans: [], timeline: [] };
+  S = { loan: null, loans: [], plans: [], timeline: [] };
   document.getElementById('pwInput').value = '';
   document.getElementById('loginError').textContent = '';
   const appWrap = document.getElementById('appWrap');
@@ -855,9 +928,10 @@ async function loadAndRender() {
     S = lsData;
     await serverSave(S); // 기존 로컬 데이터를 서버로 최초 업로드
   } else {
-    S = { loan: null, plans: [], timeline: [] };
+    S = { loan: null, loans: [], plans: [], timeline: [] };
     setSyncUI('ok', '☁ 연결됨');
   }
+  if (!S.loans) S.loans = [];
 
   if (!S.loan && currentUser.role === 'creditor') {
     document.getElementById('loanDate').value = today();
@@ -889,7 +963,13 @@ function switchTab(id) {
 }
 
 // ── 시트 ──
-function openSheet(id) { document.getElementById('sheet-' + id).classList.add('open'); }
+function openSheet(id) {
+  if (id === 'addLoan') {
+    const el = document.getElementById('addLoanDate');
+    if (el && !el.value) el.value = today();
+  }
+  document.getElementById('sheet-' + id).classList.add('open');
+}
 function closeSheet(id){ document.getElementById('sheet-' + id).classList.remove('open'); }
 function outsideClose(e, id) {
   if (e.target === document.getElementById('sheet-' + id)) closeSheet(id);
@@ -1015,6 +1095,61 @@ function saveEdit() {
   save(); closeSheet('editPlan'); render();
 }
 
+// ── 추가 대출 (채권자 전용) ──
+function saveAddLoan() {
+  if (currentUser.role !== 'creditor') return;
+  const date      = document.getElementById('addLoanDate').value;
+  const principal = parseInt(document.getElementById('addLoanPrincipal').value);
+  const interest  = parseInt(document.getElementById('addLoanInterest').value) || 0;
+  const memo      = document.getElementById('addLoanMemo').value.trim();
+  if (!date)                   return alert('날짜를 입력해주세요.');
+  if (!principal || principal <= 0) return alert('원금을 입력해주세요.');
+  const totalAmount = principal + interest;
+  const loanObj = { id: uid(), principal, interest, totalAmount, date, memo, by: currentUser.name, createdAt: new Date().toISOString() };
+  S.loans.push(loanObj);
+  S.timeline.unshift({ type: 'loan', isExtra: true, loanId: loanObj.id, principal, interest, amount: totalAmount, date, memo, by: currentUser.name, createdAt: new Date().toISOString() });
+  save(); closeSheet('addLoan');
+  ['addLoanDate','addLoanPrincipal','addLoanInterest','addLoanMemo'].forEach(id => document.getElementById(id).value = '');
+  render();
+}
+
+function openEditLoan(loanId) {
+  if (currentUser.role !== 'creditor') return;
+  const loan = S.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  document.getElementById('editLoanId').value        = loanId;
+  document.getElementById('editLoanDate').value      = loan.date;
+  document.getElementById('editLoanPrincipal').value = loan.principal;
+  document.getElementById('editLoanInterest').value  = loan.interest || '';
+  document.getElementById('editLoanMemo').value      = loan.memo || '';
+  openSheet('editLoan');
+}
+function saveEditLoan() {
+  if (currentUser.role !== 'creditor') return;
+  const loanId    = document.getElementById('editLoanId').value;
+  const date      = document.getElementById('editLoanDate').value;
+  const principal = parseInt(document.getElementById('editLoanPrincipal').value);
+  const interest  = parseInt(document.getElementById('editLoanInterest').value) || 0;
+  const memo      = document.getElementById('editLoanMemo').value.trim();
+  if (!date)                   return alert('날짜를 입력해주세요.');
+  if (!principal || principal <= 0) return alert('원금을 입력해주세요.');
+  const totalAmount = principal + interest;
+  const loan = S.loans.find(l => l.id === loanId);
+  if (!loan) return;
+  Object.assign(loan, { principal, interest, totalAmount, date, memo });
+  const tlEv = S.timeline.find(ev => ev.loanId === loanId);
+  if (tlEv) Object.assign(tlEv, { principal, interest, amount: totalAmount, date, memo });
+  save(); closeSheet('editLoan'); render();
+}
+
+function deleteAddLoan(loanId) {
+  if (currentUser.role !== 'creditor') return;
+  if (!confirm('이 추가 대출을 삭제하시겠습니까?\n삭제 후 복구가 불가능합니다.')) return;
+  S.loans = S.loans.filter(l => l.id !== loanId);
+  S.timeline = S.timeline.filter(ev => !(ev.isExtra && ev.loanId === loanId));
+  save(); render();
+}
+
 // ── 계획 삭제 (채권자 전용) ──
 function deletePlan(planId) {
   if (currentUser.role !== 'creditor') return;
@@ -1027,17 +1162,22 @@ function deletePlan(planId) {
 // ── 렌더 ──
 function render() { renderSummary(); renderPlans(); renderTimeline(); }
 
+function totalLoanAmount() {
+  const base = S.loan ? S.loan.amount : 0;
+  return base + S.loans.reduce((s, l) => s + l.totalAmount, 0);
+}
+
 function renderSummary() {
   if (!S.loan) return;
   const totalPaid = S.plans.reduce((s,p) => s + p.payments.reduce((a,pay) => a+pay.amount, 0), 0);
-  const remaining = S.loan.amount - totalPaid;
+  const remaining = totalLoanAmount() - totalPaid;
   const completed = S.plans.filter(p => p.status === 'completed').length;
   const totalHolds= S.plans.reduce((s,p) => s+p.holdHistory.length, 0);
   const rate = S.plans.length > 0
     ? Math.max(0, Math.round(completed / S.plans.length * 100 - totalHolds * 3))
     : 0;
   document.getElementById('sumRemaining').textContent   = money(remaining);
-  document.getElementById('sumLoan').textContent        = money(S.loan.amount);
+  document.getElementById('sumLoan').textContent        = money(totalLoanAmount());
   document.getElementById('sumPaid').textContent        = money(totalPaid);
   document.getElementById('promiseFill').style.width    = rate + '%';
   document.getElementById('promiseRateText').textContent= rate + '%';
@@ -1137,9 +1277,19 @@ function renderTimeline() {
   }
   list.innerHTML = S.timeline.map(ev => {
     let dotCls='', tag='', detail='';
-    if (ev.type==='loan') {
+    if (ev.type==='loan' && !ev.isExtra) {
       dotCls='d-loan'; tag=`<span class="tl-tag tl-tag-loan">대출 등록</span>`;
       detail=`<strong style="font-family:var(--mono)">${money(ev.amount)}</strong>${ev.memo?' · '+ev.memo:''}`;
+    } else if (ev.type==='loan' && ev.isExtra) {
+      dotCls='d-loan'; tag=`<span class="tl-tag tl-tag-loan">추가 대출</span>`;
+      const intPart = ev.interest > 0 ? ` + 이자 <strong style="font-family:var(--mono)">${money(ev.interest)}</strong>` : '';
+      detail=`원금 <strong style="font-family:var(--mono)">${money(ev.principal)}</strong>${intPart} = <strong style="font-family:var(--mono)">${money(ev.amount)}</strong>${ev.memo?' · '+ev.memo:''}`;
+      if (currentUser.role === 'creditor') {
+        detail += `<div style="margin-top:8px;display:flex;gap:6px">
+          <button class="act-btn act-edit" style="flex:none;padding:6px 12px;font-size:12px" onclick="openEditLoan('${ev.loanId}')">✏️ 수정</button>
+          <button class="act-btn act-delete" style="flex:none;padding:6px 12px;font-size:12px" onclick="deleteAddLoan('${ev.loanId}')">🗑 삭제</button>
+        </div>`;
+      }
     } else if (ev.type==='plan') {
       dotCls='d-plan'; tag=`<span class="tl-tag tl-tag-plan">계획 등록</span>`;
       detail=`${fmtDate(ev.date)} <strong style="font-family:var(--mono)">${money(ev.amount)}</strong>${ev.memo?' · '+ev.memo:''}`;
@@ -1170,13 +1320,17 @@ function downloadExcel() {
   if (!S.timeline.length) return alert('내보낼 기록이 없습니다.');
 
   const TYPE_LABEL = { loan: '대출 등록', plan: '계획 등록', hold: '보류', payment: '입금 확인' };
+  const getLoanLabel = ev => ev.isExtra ? '추가 대출' : '대출 등록';
 
   const header = ['구분', '날짜', '금액(원)', '변경 전 날짜', '변경 후 날짜', '메모/사유', '기록자', '등록시각'];
 
   const rows = S.timeline.map(ev => {
     let date = '', amount = '', oldDate = '', newDate = '', memo = '';
     if (ev.type === 'loan') {
-      date = ev.date; amount = ev.amount; memo = ev.memo || '';
+      date = ev.date; amount = ev.amount;
+      memo = ev.isExtra
+        ? `원금 ${ev.principal}원` + (ev.interest > 0 ? ` / 이자 ${ev.interest}원` : '') + (ev.memo ? ' / ' + ev.memo : '')
+        : (ev.memo || '');
     } else if (ev.type === 'plan') {
       date = ev.date; amount = ev.amount; memo = ev.memo || '';
     } else if (ev.type === 'hold') {
@@ -1186,7 +1340,8 @@ function downloadExcel() {
     } else if (ev.type === 'payment') {
       date = ev.date; amount = ev.amount; memo = ev.memo || '';
     }
-    return [TYPE_LABEL[ev.type] || ev.type, date, amount, oldDate, newDate, memo, ev.by, fmtTs(ev.createdAt)];
+    const typeLabel = ev.type === 'loan' ? getLoanLabel(ev) : (TYPE_LABEL[ev.type] || ev.type);
+    return [typeLabel, date, amount, oldDate, newDate, memo, ev.by, fmtTs(ev.createdAt)];
   });
 
   const csv = '﻿' + [header, ...rows]
